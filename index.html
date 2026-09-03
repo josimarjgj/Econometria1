@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulação MQO — Não Viés dos Estimadores</title>
+<style>
+  :root{
+    --bg:#f6f7fb;
+    --card:#ffffff;
+    --text:#1f2937;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+    --accent:#1f5eff;
+    --accent2:#ff8a1f;
+    --good:#0f8f55;
+    --shadow:0 10px 30px rgba(17,24,39,.08);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  header{
+    background:#111827;
+    color:white;
+    padding:22px 26px;
+  }
+  header h1{margin:0 0 6px;font-size:24px}
+  header p{margin:0;color:#d1d5db;font-size:14px}
+  .wrap{max-width:1220px;margin:24px auto;padding:0 18px 36px}
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    padding:18px;
+    margin-bottom:18px;
+  }
+  .controls{
+    display:grid;
+    grid-template-columns:repeat(6,minmax(120px,1fr));
+    gap:12px;
+    align-items:end;
+  }
+  label{display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px}
+  input,select{
+    width:100%;
+    padding:10px 11px;
+    border:1px solid #d1d5db;
+    border-radius:10px;
+    background:white;
+    font-size:14px;
+  }
+  .buttons{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-top:14px;
+  }
+  button{
+    border:0;
+    border-radius:10px;
+    padding:10px 14px;
+    font-weight:700;
+    cursor:pointer;
+    background:var(--accent);
+    color:white;
+  }
+  button.secondary{background:#374151}
+  button.light{background:#eef2ff;color:#263a8a}
+  .grid2{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}
+  .gridHist{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .stats{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:10px;
+    margin-top:12px;
+  }
+  .stat{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:12px;
+    background:#fafafa;
+  }
+  .stat .k{font-size:12px;color:var(--muted)}
+  .stat .v{font-size:22px;font-weight:800;margin-top:3px}
+  .formula{
+    background:#f9fafb;
+    border-left:4px solid var(--accent);
+    padding:12px 14px;
+    border-radius:10px;
+    font-family:"Times New Roman",serif;
+    font-size:20px;
+    margin-bottom:12px;
+  }
+  .note{
+    font-size:13px;
+    color:#4b5563;
+    line-height:1.45;
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    border-radius:10px;
+    padding:10px 12px;
+  }
+  .legend{font-size:12px;color:#4b5563;margin:8px 0 0}
+  svg{
+    width:100%;
+    height:390px;
+    display:block;
+    background:white;
+    border:1px solid var(--border);
+    border-radius:12px;
+  }
+  .hist svg{height:300px}
+  .tableWrap{max-height:330px;overflow:auto;border:1px solid var(--border);border-radius:10px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 9px;border-bottom:1px solid var(--border);text-align:right}
+  th{position:sticky;top:0;background:#f3f4f6}
+  th:first-child,td:first-child{text-align:center}
+  .small{font-size:12px;color:var(--muted)}
+  @media(max-width:900px){
+    .controls{grid-template-columns:repeat(2,1fr)}
+    .grid2,.gridHist{grid-template-columns:1fr}
+    .stats{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Simulação de MQO: não viés dos estimadores a e b</h1>
+  <p>Modelo verdadeiro: y = α + βx + u, com E(u|x)=0.</p>
+</header>
+
+<div class="wrap">
+
+  <section class="card">
+    <div class="controls">
+      <div>
+        <label>α</label>
+        <input id="alpha" type="number" step="0.1" value="6">
+      </div>
+      <div>
+        <label>β</label>
+        <input id="beta" type="number" step="0.1" value="1.5">
+      </div>
+      <div>
+        <label>Variância do erro (σ²)</label>
+        <input id="variance" type="number" step="0.1" min="0.01" value="2">
+      </div>
+      <div>
+        <label>Tamanho da população (N)</label>
+        <input id="N" type="number" step="1" min="5" value="20">
+      </div>
+      <div>
+        <label>Tamanho da amostra (n)</label>
+        <input id="n" type="number" step="1" min="3" value="5">
+      </div>
+      <div>
+        <label>Repetições Monte Carlo</label>
+        <input id="R" type="number" step="100" min="100" max="50000" value="5000">
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button id="generateBtn">Gerar população</button>
+      <button id="sampleBtn" class="secondary">Sortear nova amostra</button>
+          </div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <h3 style="margin-top:0">População simulada e amostra atual</h3>
+      <svg id="scatter" viewBox="0 0 760 390" aria-label="gráfico de dispersão"></svg>
+      <div class="legend">
+        ● População simulada &nbsp;&nbsp; ● Amostra atual &nbsp;&nbsp; — Reta verdadeira &nbsp;&nbsp; -- Reta estimada
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Amostra atual</h3>
+      <div class="formula" id="trueFormula">y = 6 + 1,5x + u</div>
+      <div class="formula" id="estFormula">ŷ = —</div>
+      <div class="stats">
+        <div class="stat"><div class="k">α</div><div class="v" id="aTrue">6</div></div>
+        <div class="stat"><div class="k">a</div><div class="v" id="aHat">—</div></div>
+        <div class="stat"><div class="k">β</div><div class="v" id="bTrue">1,5</div></div>
+        <div class="stat"><div class="k">b</div><div class="v" id="bHat">—</div></div>
+      </div>
+
+      <h4>Observações sorteadas</h4>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>i</th><th>x</th><th>u</th><th>y</th></tr></thead>
+          <tbody id="sampleTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 style="margin-top:0">Monte Carlo: distribuição amostral dos estimadores</h3>
+<div class="stats" style="margin-top:14px">
+      <div class="stat"><div class="k">Média(a)</div><div class="v" id="meanA">—</div></div>
+            <div class="stat"><div class="k">Viés(a)</div><div class="v" id="biasA">—</div></div>
+      <div class="stat"><div class="k">Média(b)</div><div class="v" id="meanB">—</div></div>
+            <div class="stat"><div class="k">Viés(b)</div><div class="v" id="biasB">—</div></div>
+    </div>
+
+    <div class="gridHist" style="margin-top:16px">
+      <div class="hist">
+        <h4>Distribuição de a</h4>
+        <svg id="histA" viewBox="0 0 560 300"></svg>
+      </div>
+      <div class="hist">
+        <h4>Distribuição de b</h4>
+        <svg id="histB" viewBox="0 0 560 300"></svg>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+let population = [];
+let currentSample = [];
+
+function fmt(x, d=3){
+  return Number(x).toFixed(d).replace(".", ",");
+}
+
+function normalRandom(mean=0, sd=1){
+  let u=0, v=0;
+  while(u===0) u=Math.random();
+  while(v===0) v=Math.random();
+  const z=Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+  return mean + sd*z;
+}
+
+function getParams(){
+  const alpha = parseFloat(document.getElementById("alpha").value);
+  const beta = parseFloat(document.getElementById("beta").value);
+  const variance = Math.max(0.000001, parseFloat(document.getElementById("variance").value));
+  const N = Math.max(5, parseInt(document.getElementById("N").value));
+  const n = Math.max(3, parseInt(document.getElementById("n").value));
+  const R = Math.max(100, parseInt(document.getElementById("R").value));
+  return {alpha,beta,variance,N,n,R};
+}
+
+function generatePopulation(){
+  const {alpha,beta,variance,N,n} = getParams();
+  const sd = Math.sqrt(variance);
+  population = [];
+  for(let i=0;i<N;i++){
+    const x = 10*Math.random();
+    const u = normalRandom(0,sd);
+    const y = alpha + beta*x + u;
+    population.push({x,u,y});
+  }
+  document.getElementById("n").max = N;
+  if(n>N) document.getElementById("n").value = Math.min(5,N);
+  updateTruth();
+  drawScatter();
+  samplePopulation();
+}
+
+function samplePopulation(){
+  if(!population.length) generatePopulation();
+  const {n} = getParams();
+  const nn = Math.min(n,population.length);
+  const idx = [...Array(population.length).keys()];
+  for(let i=idx.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [idx[i],idx[j]]=[idx[j],idx[i]];
+  }
+  currentSample = idx.slice(0,nn).map(i=>population[i]);
+  updateSample();
+  drawScatter();
+  monteCarlo();
+}
+
+function ols(data){
+  const n=data.length;
+  const mx=data.reduce((s,d)=>s+d.x,0)/n;
+  const my=data.reduce((s,d)=>s+d.y,0)/n;
+  let sxx=0,sxy=0;
+  for(const d of data){
+    sxx += (d.x-mx)*(d.x-mx);
+    sxy += (d.x-mx)*(d.y-my);
+  }
+  const b=sxy/sxx;
+  const a=my-b*mx;
+  return {a,b};
+}
+
+function updateTruth(){
+  const {alpha,beta} = getParams();
+  document.getElementById("aTrue").textContent=fmt(alpha,2);
+  document.getElementById("bTrue").textContent=fmt(beta,2);
+  document.getElementById("trueFormula").textContent=`y = ${fmt(alpha,2)} + ${fmt(beta,2)}x + u`;
+}
+
+function updateSample(){
+  if(!currentSample.length) return;
+  const est=ols(currentSample);
+  document.getElementById("aHat").textContent=fmt(est.a,3);
+  document.getElementById("bHat").textContent=fmt(est.b,3);
+  const sign = est.b >= 0 ? "+" : "−";
+  document.getElementById("estFormula").textContent=
+    `ŷ = ${fmt(est.a,3)} ${sign} ${fmt(Math.abs(est.b),3)}x`;
+
+  const tbody=document.getElementById("sampleTable");
+  tbody.innerHTML="";
+  currentSample.forEach((d,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${i+1}</td><td>${fmt(d.x,3)}</td><td>${fmt(d.u,3)}</td><td>${fmt(d.y,3)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function svgEl(name,attrs={}){
+  const e=document.createElementNS("http://www.w3.org/2000/svg",name);
+  Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));
+  return e;
+}
+
+function drawScatter(){
+  const svg=document.getElementById("scatter");
+  svg.innerHTML="";
+  if(!population.length) return;
+  const {alpha,beta,variance} = getParams();
+  const est=currentSample.length?ols(currentSample):null;
+
+  const W=760,H=390,m={l:58,r:20,t:20,b:44};
+
+  // Eixos fixos enquanto alpha, beta e a variancia permanecerem iguais.
+  // Isso evita que o grafico "salte" quando uma nova amostra ou populacao e gerada.
+  const xmin = 0;
+  const xmax = 10;
+  const sd = Math.sqrt(variance);
+
+  const y0 = alpha + beta*xmin;
+  const y10 = alpha + beta*xmax;
+  const lineMin = Math.min(y0, y10);
+  const lineMax = Math.max(y0, y10);
+
+  // Margem fixa de 4 desvios-padrao ao redor da reta populacional.
+  const extra = Math.max(4*sd, 1);
+  const ymin = lineMin - extra;
+  const ymax = lineMax + extra;
+
+  const X=x=>m.l+(x-xmin)/(xmax-xmin)*(W-m.l-m.r);
+  const Y=y=>H-m.b-(y-ymin)/(ymax-ymin)*(H-m.t-m.b);
+
+  // grid + axes
+  for(let i=0;i<=5;i++){
+    const gx=m.l+i*(W-m.l-m.r)/5;
+    const gy=m.t+i*(H-m.t-m.b)/5;
+    svg.appendChild(svgEl("line",{x1:gx,y1:m.t,x2:gx,y2:H-m.b,stroke:"#eef0f4"}));
+    svg.appendChild(svgEl("line",{x1:m.l,y1:gy,x2:W-m.r,y2:gy,stroke:"#eef0f4"}));
+  }
+  svg.appendChild(svgEl("line",{x1:m.l,y1:H-m.b,x2:W-m.r,y2:H-m.b,stroke:"#6b7280"}));
+  svg.appendChild(svgEl("line",{x1:m.l,y1:m.t,x2:m.l,y2:H-m.b,stroke:"#6b7280"}));
+
+  for(let i=0;i<=5;i++){
+    const xv=xmin+i*(xmax-xmin)/5;
+    const yv=ymax-i*(ymax-ymin)/5;
+    const tx=svgEl("text",{x:X(xv),y:H-18,"text-anchor":"middle","font-size":"11",fill:"#6b7280"});
+    tx.textContent=fmt(xv,1); svg.appendChild(tx);
+    const ty=svgEl("text",{x:48,y:Y(yv)+4,"text-anchor":"end","font-size":"11",fill:"#6b7280"});
+    ty.textContent=fmt(yv,1); svg.appendChild(ty);
+  }
+
+  // true line
+  const y1=alpha+beta*xmin, y2=alpha+beta*xmax;
+  svg.appendChild(svgEl("line",{x1:X(xmin),y1:Y(y1),x2:X(xmax),y2:Y(y2),stroke:"#1f5eff","stroke-width":"3"}));
+
+  // estimated line
+  if(est && Number.isFinite(est.a) && Number.isFinite(est.b)){
+    svg.appendChild(svgEl("line",{
+      x1:X(xmin),y1:Y(est.a+est.b*xmin),
+      x2:X(xmax),y2:Y(est.a+est.b*xmax),
+      stroke:"#ff8a1f","stroke-width":"3","stroke-dasharray":"8 6"
+    }));
+  }
+
+  // population points
+  population.forEach(d=>{
+    svg.appendChild(svgEl("circle",{cx:X(d.x),cy:Y(d.y),r:4.2,fill:"#9ca3af",opacity:".8"}));
+  });
+
+  // sample points
+  currentSample.forEach(d=>{
+    svg.appendChild(svgEl("circle",{cx:X(d.x),cy:Y(d.y),r:6,fill:"#ff8a1f",stroke:"white","stroke-width":"1.5"}));
+  });
+
+  const xlabel=svgEl("text",{x:(m.l+W-m.r)/2,y:H-5,"text-anchor":"middle","font-size":"13",fill:"#374151"});
+  xlabel.textContent="x"; svg.appendChild(xlabel);
+  const ylabel=svgEl("text",{x:15,y:(m.t+H-m.b)/2,transform:`rotate(-90 15 ${(m.t+H-m.b)/2})`,"text-anchor":"middle","font-size":"13",fill:"#374151"});
+  ylabel.textContent="y"; svg.appendChild(ylabel);
+}
+
+function monteCarlo(){
+  const {alpha,beta,variance,n,R} = getParams();
+  const sd=Math.sqrt(variance);
+  const A=[],B=[];
+  for(let r=0;r<R;r++){
+    const data=[];
+    for(let i=0;i<n;i++){
+      const x=10*Math.random();
+      const u=normalRandom(0,sd);
+      const y=alpha+beta*x+u;
+      data.push({x,y});
+    }
+    const est=ols(data);
+    if(Number.isFinite(est.a) && Number.isFinite(est.b)){
+      A.push(est.a); B.push(est.b);
+    }
+  }
+  const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
+  const sampleVar=(a,m)=>a.reduce((s,v)=>s+(v-m)*(v-m),0)/(a.length-1);
+  const ma=mean(A), mb=mean(B);
+  const va=sampleVar(A,ma), vb=sampleVar(B,mb);
+
+  document.getElementById("meanA").textContent=fmt(ma,4);
+  document.getElementById("biasA").textContent=fmt(ma-alpha,4);
+  document.getElementById("meanB").textContent=fmt(mb,4);
+  document.getElementById("biasB").textContent=fmt(mb-beta,4);
+
+  // Faixas fixas dos histogramas baseadas apenas nos parâmetros populacionais
+  // e no menor tamanho de amostra permitido. Assim, o eixo x permanece fixo
+  // mesmo quando o usuário altera o tamanho da amostra.
+  const varX = 100/12;
+  const nAxis = 3; // menor n permitido na interface
+  const sxxApprox = Math.max((nAxis - 1) * varX, 1e-6);
+  const sdBApprox = Math.sqrt(variance / sxxApprox);
+  const sdAApprox = Math.sqrt(variance * (1/nAxis + (25 / sxxApprox)));
+
+  const aMin = alpha - 4 * sdAApprox;
+  const aMax = alpha + 4 * sdAApprox;
+  const bMin = beta - 4 * sdBApprox;
+  const bMax = beta + 4 * sdBApprox;
+
+  drawHist("histA",A,alpha,"a","α", aMin, aMax);
+  drawHist("histB",B,beta,"b","β", bMin, bMax);
+}
+
+function drawHist(id,data,trueValue,xlabel,trueLabel, fixedMin=null, fixedMax=null){
+  const svg=document.getElementById(id);
+  svg.innerHTML="";
+  if(!data.length) return;
+
+  const W=560,H=300,m={l:48,r:18,t:18,b:42};
+  let lo = fixedMin;
+  let hi = fixedMax;
+
+  if(lo === null || hi === null || !Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi){
+    const sorted=[...data].sort((a,b)=>a-b);
+    lo=sorted[Math.floor(sorted.length*0.005)];
+    hi=sorted[Math.floor(sorted.length*0.995)];
+  }
+
+  const bins=32;
+  const counts=new Array(bins).fill(0);
+  for(const v of data){
+    if(v<lo || v>hi) continue;
+    let k=Math.floor((v-lo)/(hi-lo)*bins);
+    if(k===bins) k=bins-1;
+    if(k>=0 && k<bins) counts[k]++;
+  }
+  const maxC=Math.max(...counts,1);
+  const X=x=>m.l+(x-lo)/(hi-lo)*(W-m.l-m.r);
+  const Y=c=>H-m.b-c/maxC*(H-m.t-m.b);
+
+  for(let i=0;i<bins;i++){
+    const x0=lo+i*(hi-lo)/bins;
+    const x1=lo+(i+1)*(hi-lo)/bins;
+    svg.appendChild(svgEl("rect",{
+      x:X(x0)+1,y:Y(counts[i]),width:Math.max(1,X(x1)-X(x0)-2),
+      height:H-m.b-Y(counts[i]),fill:"#c7d2fe"
+    }));
+  }
+
+  if(trueValue>=lo && trueValue<=hi){
+    svg.appendChild(svgEl("line",{x1:X(trueValue),y1:m.t,x2:X(trueValue),y2:H-m.b,stroke:"#1f5eff","stroke-width":"3"}));
+    const lab=svgEl("text",{x:X(trueValue)+5,y:m.t+12,"font-size":"11",fill:"#1f5eff"});
+    lab.textContent=trueLabel; svg.appendChild(lab);
+  }
+
+  svg.appendChild(svgEl("line",{x1:m.l,y1:H-m.b,x2:W-m.r,y2:H-m.b,stroke:"#6b7280"}));
+  svg.appendChild(svgEl("line",{x1:m.l,y1:m.t,x2:m.l,y2:H-m.b,stroke:"#6b7280"}));
+
+  for(let i=0;i<=4;i++){
+    const xv=lo+i*(hi-lo)/4;
+    const t=svgEl("text",{x:X(xv),y:H-18,"text-anchor":"middle","font-size":"11",fill:"#6b7280"});
+    t.textContent=fmt(xv,2); svg.appendChild(t);
+  }
+  const xl=svgEl("text",{x:(m.l+W-m.r)/2,y:H-4,"text-anchor":"middle","font-size":"13",fill:"#374151"});
+  xl.textContent=xlabel; svg.appendChild(xl);
+}
+
+document.getElementById("generateBtn").addEventListener("click", generatePopulation);
+document.getElementById("sampleBtn").addEventListener("click", samplePopulation);
+
+["alpha","beta","variance","N"].forEach(id=>{
+  document.getElementById(id).addEventListener("change",()=>{
+    generatePopulation();
+  });
+});
+
+document.getElementById("n").addEventListener("change",()=>{
+  samplePopulation();
+});
+
+document.getElementById("R").addEventListener("change",()=>{
+  monteCarlo();
+});
+
+generatePopulation();
+</script>
+</body>
+</html>
